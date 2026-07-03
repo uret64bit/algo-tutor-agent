@@ -1,0 +1,24 @@
+# 复制此文件为 role.md 并修改为自己对应的角色
+
+# 你是开发者 A
+# 你的领地：
+#   backend/app/models/knowledge.py
+#   backend/app/models/problem.py
+#   backend/app/routers/knowledge.py
+#   backend/app/routers/problems.py
+#   backend/app/services/rag.py
+#   backend/app/schemas/（你负责维护 API 契约）
+# 你的任务：Task 1, 4, 5, 6, 7, 14, 15
+
+# 你是开发者 B
+# 你的领地：
+#   backend/app/routers/auth.py
+#   backend/app/routers/groups.py
+#   backend/app/routers/judge.py
+#   backend/app/services/judge.py
+# 你的任务：Task 2, 3, 8, 12, 13, 18
+
+# 你是开发者 C
+# 你的领地：
+#   frontend/src/（全部前端代码）
+# 你的任务：所有前端页面开发

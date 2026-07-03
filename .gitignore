@@ -32,6 +32,9 @@ env/
 *~
 .trae/skills/
 
+# 角色文件（每人本地一份，不提交）
+.trae/rules/role.md
+
 # OS
 .DS_Store
 Thumbs.db
