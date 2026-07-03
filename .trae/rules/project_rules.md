@@ -5,6 +5,35 @@
 - 后端: Python 3.12 + FastAPI + PostgreSQL + SQLAlchemy 2.0 (async)
 - 详见: project_memory.md
 
+## 多人协作规则（AI 必读）
+
+### 文件归属（不可跨区修改）
+```
+backend/app/models/knowledge.py   ← A 的领地
+backend/app/models/problem.py     ← A 的领地
+backend/app/routers/auth.py       ← B 的领地
+backend/app/routers/groups.py     ← B 的领地
+backend/app/routers/judge.py      ← B 的领地
+backend/app/routers/knowledge.py  ← A 的领地
+backend/app/routers/problems.py   ← A 的领地
+backend/app/schemas/              ← 共享，所有人可读，A 负责维护
+backend/app/services/rag.py       ← A 的领地
+backend/app/services/judge.py     ← B 的领地
+frontend/src/                     ← C 的领地
+```
+
+### 工作流程
+1. **开始工作前**：`git pull` 拉取最新代码
+2. **编写代码前**：先 `Read` 对应的 `backend/app/schemas/` 和 `spec.md`
+3. **只改自己领地的文件**，不要跨区修改
+4. **完成后**：`ruff check` / `npm run lint` → 提交 → 提 PR
+5. **PR 合入后**：通知其他人 `git pull`
+
+### API 契约 = Schemas 目录
+- 所有 API 的 Request/Response 类型定义在 `backend/app/schemas/`
+- 后端实现路由前，先定义 Schema
+- 前端开发时，先 Read Schema 文件，不应凭空编造接口
+
 ## Lint & TypeCheck 命令
 - 后端 lint: `cd backend && ruff check .`
 - 后端 format: `cd backend && ruff format .`
