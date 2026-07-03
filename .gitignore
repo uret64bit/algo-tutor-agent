@@ -30,6 +30,7 @@ env/
 *.swp
 *.swo
 *~
+.trae/skills/
 
 # OS
 .DS_Store
