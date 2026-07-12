@@ -1,0 +1,108 @@
+import React from 'react'
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom'
+import {
+  BookOpen,
+  Code2,
+  MessageSquare,
+  BarChart3,
+  BookX,
+  Bell,
+  RefreshCw,
+  Users,
+  LogOut,
+  Menu,
+  X,
+} from 'lucide-react'
+import { useAuthStore } from '../stores/authStore'
+import { useState } from 'react'
+
+const Layout: React.FC = () => {
+  const location = useLocation()
+  const navigate = useNavigate()
+  const { user, logout } = useAuthStore()
+  const [sidebarOpen, setSidebarOpen] = useState(true)
+
+  const navItems = [
+    { path: '/knowledge', label: '知识点图谱', icon: BookOpen },
+    { path: '/problems', label: '题库', icon: Code2 },
+    { path: '/ai-chat', label: 'AI 问答', icon: MessageSquare },
+    { path: '/progress', label: '学习进度', icon: BarChart3 },
+    { path: '/wrong-answers', label: '错题本', icon: BookX },
+    { path: '/review', label: '复习提醒', icon: RefreshCw },
+    { path: '/notifications', label: '消息中心', icon: Bell },
+    { path: '/discussions', label: '题解广场', icon: Users },
+  ]
+
+  const handleLogout = () => {
+    logout()
+    navigate('/login')
+  }
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex">
+      <aside
+        className={`${
+          sidebarOpen ? 'w-64' : 'w-20'
+        } bg-white border-r border-gray-200 transition-all duration-300 flex flex-col fixed h-full z-20`}
+      >
+        <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+          {sidebarOpen && <h1 className="text-xl font-bold text-blue-600">算法教练</h1>}
+          <button
+            onClick={() => setSidebarOpen(!sidebarOpen)}
+            className="p-2 hover:bg-gray-100 rounded-lg"
+          >
+            {sidebarOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+        </div>
+
+        <nav className="flex-1 p-4 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const Icon = item.icon
+            const isActive = location.pathname.startsWith(item.path)
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                className={`flex items-center gap-3 px-3 py-3 rounded-lg transition-colors ${
+                  isActive ? 'bg-blue-50 text-blue-600' : 'text-gray-700 hover:bg-gray-100'
+                }`}
+              >
+                <Icon size={20} />
+                {sidebarOpen && <span>{item.label}</span>}
+              </Link>
+            )
+          })}
+        </nav>
+
+        <div className="p-4 border-t border-gray-200">
+          <div className="flex items-center gap-3 mb-3">
+            <div className="w-10 h-10 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 font-semibold">
+              {user?.username?.charAt(0).toUpperCase() || 'U'}
+            </div>
+            {sidebarOpen && (
+              <div className="flex-1 min-w-0">
+                <p className="font-medium text-gray-900 truncate">{user?.username}</p>
+                <p className="text-sm text-gray-500 truncate">{user?.email}</p>
+              </div>
+            )}
+          </div>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-3 w-full px-3 py-2 text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+          >
+            <LogOut size={20} />
+            {sidebarOpen && <span>退出登录</span>}
+          </button>
+        </div>
+      </aside>
+
+      <main className={`flex-1 ${sidebarOpen ? 'ml-64' : 'ml-20'} transition-all duration-300`}>
+        <div className="p-8">
+          <Outlet />
+        </div>
+      </main>
+    </div>
+  )
+}
+
+export default Layout

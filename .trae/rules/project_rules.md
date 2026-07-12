@@ -12,7 +12,6 @@
 backend/app/models/knowledge.py   ← A 的领地
 backend/app/models/problem.py     ← A 的领地
 backend/app/routers/auth.py       ← B 的领地
-backend/app/routers/groups.py     ← B 的领地
 backend/app/routers/judge.py      ← B 的领地
 backend/app/routers/knowledge.py  ← A 的领地
 backend/app/routers/problems.py   ← A 的领地
