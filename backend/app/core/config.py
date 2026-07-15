@@ -18,6 +18,29 @@ class Settings(BaseSettings):
 
     OPENAI_API_KEY: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
+    OPENAI_REQUEST_TIMEOUT_SEC: float = 30.0
+
+    # Agent
+    AGENT_MAX_TOOL_ROUNDS: int = 5
+    AGENT_REQUEST_TIMEOUT_SEC: float = 60.0
+
+    # 代码执行沙箱
+    SANDBOX_IMAGE: str = "algo-sandbox:latest"
+    SANDBOX_NETWORK_DISABLED: bool = True
+    SANDBOX_CPU_LIMIT: float = 1.0
+    SANDBOX_MEMORY_LIMIT_MB: int = 256
+    SANDBOX_PIDS_LIMIT: int = 64
+    SANDBOX_DEFAULT_TIMEOUT_MS: int = 3000
+    SANDBOX_MAX_TIMEOUT_MS: int = 5000
+    SANDBOX_MAX_MEMORY_MB: int = 512
+    SANDBOX_MAX_OUTPUT_BYTES: int = 16384
+    SANDBOX_USER: str = "sandbox"
+
+    # 检索 / RAG
+    RAG_EMBEDDING_MODEL: str = "text-embedding-3-small"
+    RAG_EMBEDDING_DIM: int = 1536
+    RAG_DEFAULT_LIMIT: int = 5
+    RAG_MAX_LIMIT: int = 10
 
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 

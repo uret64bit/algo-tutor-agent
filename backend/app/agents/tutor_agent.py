@@ -1,0 +1,287 @@
+"""Tutor Agent main loop.
+
+Uses OpenAI chat.completions with `tools` (function calling).
+NOT the deprecated Assistants API.
+
+Flow:
+1. Assemble system prompt + history + user message (+ optional problem context).
+2. Send tools (execute_code, search_problems, search_knowledge).
+3. If model requests tool calls: dispatch locally, feed structured results back.
+4. Loop up to AGENT_MAX_TOOL_ROUNDS.
+5. Return final answer + references + tool call summary.
+
+Tool exceptions are converted to structured error dicts so the model can
+degrade gracefully; the HTTP request never returns an unhandled 500.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import logging
+import time
+from typing import TYPE_CHECKING, Any
+from uuid import UUID
+
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from app.agents.prompts import TUTOR_SYSTEM_PROMPT
+from app.core.config import settings
+from app.models.problem import Problem, ProblemStatus
+from app.schemas.agent import (
+    AgentChatRequest,
+    AgentChatResponse,
+    AgentReference,
+    AgentToolCallSummary,
+)
+from app.tools import code_execution, knowledge_search, problem_search
+
+if TYPE_CHECKING:
+    from app.services.openai_service import OpenAIService
+    from app.services.rag import RAGService
+
+logger = logging.getLogger(__name__)
+
+VALID_TOOL_NAMES = {"execute_code", "search_problems", "search_knowledge"}
+
+
+class TutorAgent:
+    def __init__(
+        self,
+        openai_svc: OpenAIService,
+        session_factory: async_sessionmaker[AsyncSession],
+        rag: RAGService,
+    ) -> None:
+        self._client = openai_svc.client
+        self._model = settings.OPENAI_MODEL
+        self._max_rounds = settings.AGENT_MAX_TOOL_ROUNDS
+        self._session_factory = session_factory
+        self._rag = rag
+
+    async def run(self, request: AgentChatRequest) -> AgentChatResponse:
+        # Wrap the entire run in a hard wall-clock timeout so a runaway
+        # loop (including in-flight OpenAI / tool calls) cannot exceed
+        # AGENT_REQUEST_TIMEOUT_SEC. asyncio.timeout cancels the inner work.
+        try:
+            async with asyncio.timeout(settings.AGENT_REQUEST_TIMEOUT_SEC):
+                return await self._run_inner(request)
+        except TimeoutError:
+            logger.warning(
+                "agent run() exceeded AGENT_REQUEST_TIMEOUT_SEC=%.1fs",
+                settings.AGENT_REQUEST_TIMEOUT_SEC,
+            )
+            return AgentChatResponse(
+                message="请求处理超时，请稍后重试或缩小问题范围。",
+                references=[],
+                tool_calls=[],
+            )
+
+    async def _run_inner(self, request: AgentChatRequest) -> AgentChatResponse:
+        # 1. Build the system message, possibly augmented with problem context.
+        system_content = TUTOR_SYSTEM_PROMPT
+        context_problem_summary: str | None = None
+        if request.context and request.context.problem_id:
+            context_problem_summary = await self._load_problem_summary(request.context.problem_id)
+        if context_problem_summary:
+            system_content += "\n\n--- 当前题目上下文 ---\n" + context_problem_summary
+        if request.context and request.context.code:
+            lang = request.context.language or "未知"
+            # Truncate very long code to keep prompt bounded.
+            code_excerpt = request.context.code[:8000]
+            system_content += f"\n\n用户当前 {lang} 代码：\n```\n{code_excerpt}\n```"
+
+        # 2. Assemble messages.
+        messages: list[dict[str, Any]] = [
+            {"role": "system", "content": system_content},
+        ]
+        # History: only user/assistant (validated by schema).
+        for h in request.history:
+            messages.append({"role": h.role.value, "content": h.content})
+        messages.append({"role": "user", "content": request.message})
+
+        tools = [
+            code_execution.TOOL_SCHEMA,
+            problem_search.TOOL_SCHEMA,
+            knowledge_search.TOOL_SCHEMA,
+        ]
+
+        references: list[AgentReference] = []
+        tool_calls_summary: list[AgentToolCallSummary] = []
+
+        # 3. Tool-calling loop, bounded by both max_rounds and a wall-clock
+        # deadline so a runaway loop cannot exceed AGENT_REQUEST_TIMEOUT_SEC.
+        deadline = time.monotonic() + settings.AGENT_REQUEST_TIMEOUT_SEC
+
+        for round_idx in range(self._max_rounds):
+            if time.monotonic() >= deadline:
+                logger.warning(
+                    "agent exceeded AGENT_REQUEST_TIMEOUT_SEC=%.1fs at round %d, forcing final answer",
+                    settings.AGENT_REQUEST_TIMEOUT_SEC,
+                    round_idx,
+                )
+                break
+
+            resp = await self._client.chat.completions.create(
+                model=self._model,
+                messages=messages,
+                tools=tools,
+                tool_choice="auto",
+                temperature=0.3,
+            )
+            choice = resp.choices[0]
+            msg = choice.message
+
+            if not msg.tool_calls:
+                # Final answer.
+                return AgentChatResponse(
+                    message=msg.content or "",
+                    references=references,
+                    tool_calls=tool_calls_summary,
+                )
+
+            # Append the assistant message (with tool_calls) to the conversation.
+            messages.append(
+                {
+                    "role": "assistant",
+                    "content": msg.content,
+                    "tool_calls": [
+                        {
+                            "id": tc.id,
+                            "type": "function",
+                            "function": {
+                                "name": tc.function.name,
+                                "arguments": tc.function.arguments,
+                            },
+                        }
+                        for tc in msg.tool_calls
+                    ],
+                }
+            )
+
+            # Dispatch each tool call.
+            for tc in msg.tool_calls:
+                tool_name = tc.function.name
+                if tool_name not in VALID_TOOL_NAMES:
+                    logger.warning("agent requested unknown tool: %s", tool_name)
+                    tool_calls_summary.append(AgentToolCallSummary(name=tool_name, status="error"))
+                    messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tc.id,
+                            "content": json.dumps({"error": "unknown_tool"}),
+                        }
+                    )
+                    continue
+
+                args_str = tc.function.arguments or "{}"
+                try:
+                    args = json.loads(args_str)
+                except Exception:
+                    args = {}
+
+                result, status, refs = await self._dispatch(tool_name, args)
+                tool_calls_summary.append(AgentToolCallSummary(name=tool_name, status=status))
+                references.extend(refs)
+
+                # Cap tool result size to avoid blowing context.
+                result_str = json.dumps(result, ensure_ascii=False)
+                if len(result_str) > 8000:
+                    result_str = result_str[:8000] + "...(truncated)"
+
+                messages.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tc.id,
+                        "content": result_str,
+                    }
+                )
+
+        # 4. Exhausted rounds: do one final call without tools to force an answer.
+        logger.warning("agent reached max_tool_rounds=%d, forcing final answer", self._max_rounds)
+        resp = await self._client.chat.completions.create(
+            model=self._model,
+            messages=messages,
+            temperature=0.3,
+        )
+        final_msg = resp.choices[0].message
+        return AgentChatResponse(
+            message=final_msg.content or "（未能生成回答，请重试。）",
+            references=references,
+            tool_calls=tool_calls_summary,
+        )
+
+    async def _dispatch(
+        self,
+        name: str,
+        args: dict[str, Any],
+    ) -> tuple[dict[str, Any], str, list[AgentReference]]:
+        """Run a tool, capture structured result, status and references."""
+        refs: list[AgentReference] = []
+        try:
+            if name == "execute_code":
+                result = await code_execution.execute(args)
+                status = "success" if result.get("status") == "success" else "error"
+                return result, status, refs
+
+            if name == "search_problems":
+                async with self._session_factory() as db:
+                    result = await problem_search.execute(args, db)
+                status = "success" if not result.get("error") else "error"
+                for p in result.get("results", []):
+                    refs.append(
+                        AgentReference(
+                            type="problem",
+                            id=UUID(p["id"]),
+                            title=p["title"],
+                            source=f"problem:{p.get('slug', '')}",
+                        )
+                    )
+                return result, status, refs
+
+            if name == "search_knowledge":
+                result = await knowledge_search.execute(args, self._rag)
+                status = "success" if not result.get("error") else "error"
+                for k in result.get("results", []):
+                    refs.append(
+                        AgentReference(
+                            type="knowledge",
+                            id=UUID(k["knowledge_id"]),
+                            title=k.get("knowledge_name", ""),
+                            source=f"knowledge:{k.get('lecture_title', '')}",
+                        )
+                    )
+                return result, status, refs
+
+            return {"error": "unknown_tool"}, "error", refs
+        except Exception as exc:
+            logger.exception("tool %s raised", name)
+            return {"error": f"tool_exception: {type(exc).__name__}"}, "error", refs
+
+    async def _load_problem_summary(self, problem_id: UUID) -> str | None:
+        """Load a safe summary of the current problem (no test_cases)."""
+        try:
+            async with self._session_factory() as db:
+                result = await db.execute(
+                    select(Problem).where(
+                        Problem.id == problem_id,
+                        Problem.status == ProblemStatus.PUBLISHED,
+                    )
+                )
+                p = result.scalar_one_or_none()
+                if p is None:
+                    return None
+                summary = (
+                    f"题目：{p.title} (slug={p.slug})\n"
+                    f"难度：{p.difficulty.value}\n"
+                    f"时间限制：{p.time_limit_ms} ms / 内存限制：{p.memory_limit_kb} KB\n"
+                    f"描述：{p.description[:1500]}\n"
+                )
+                if p.sample_input:
+                    summary += f"样例输入：{p.sample_input}\n"
+                if p.sample_output:
+                    summary += f"样例输出：{p.sample_output}\n"
+                return summary
+        except Exception:
+            logger.exception("failed to load problem context")
+            return None

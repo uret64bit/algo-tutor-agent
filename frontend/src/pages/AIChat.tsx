@@ -1,12 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react'
-import { Send, Bot, User, BookOpen } from 'lucide-react'
+import { Send, Bot, User, BookOpen, AlertCircle, RefreshCw } from 'lucide-react'
+import { agentApi } from '../utils/api'
+import type { AgentReference } from '../types'
 
 interface Message {
   id: string
   role: 'user' | 'assistant'
   content: string
-  references?: { title: string; source: string }[]
+  references?: AgentReference[]
 }
+
+const MAX_HISTORY = 20
 
 const AIChat: React.FC = () => {
   const [messages, setMessages] = useState<Message[]>([
@@ -19,6 +23,8 @@ const AIChat: React.FC = () => {
   ])
   const [input, setInput] = useState('')
   const [isLoading, setIsLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [lastFailedInput, setLastFailedInput] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
   const scrollToBottom = () => {
@@ -29,33 +35,77 @@ const AIChat: React.FC = () => {
     scrollToBottom()
   }, [messages])
 
-  const handleSend = async () => {
-    if (!input.trim() || isLoading) return
+  const buildHistory = (msgs: Message[]) => {
+    // Exclude the seeded welcome message (id='1') and only keep user/assistant turns.
+    const conversation = msgs.filter((m) => m.id !== '1')
+    // Keep only the most recent MAX_HISTORY entries.
+    const recent = conversation.slice(-MAX_HISTORY)
+    return recent.map((m) => ({ role: m.role, content: m.content }))
+  }
 
+  // `baseMessages` lets callers (retry) pass a cleaned message list so we
+  // don't read stale closure state. Defaults to the current `messages`.
+  const send = async (text: string, baseMessages?: Message[]) => {
+    if (!text.trim() || isLoading) return
+
+    setError(null)
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input,
+      content: text,
     }
 
-    setMessages((prev) => [...prev, userMessage])
+    const sourceMessages = baseMessages ?? messages
+    // Build history from the messages BEFORE adding the new user message,
+    // so the current question is not duplicated in history.
+    const history = buildHistory(sourceMessages)
+    setMessages([...sourceMessages, userMessage])
     setInput('')
     setIsLoading(true)
 
-    setTimeout(() => {
+    try {
+      const resp = await agentApi.chat({
+        message: text,
+        history,
+        context: undefined,
+      })
+      const data = resp.data
       const aiResponse: Message = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content:
-          '这是一个很好的问题！动态规划（DP）是一种通过把原问题分解为相对简单的子问题的方式求解复杂问题的方法。核心思想是记住已经解决过的子问题的解，避免重复计算。\n\n入门建议：\n1. 从「爬楼梯」「斐波那契数列」等经典问题开始\n2. 理解「状态」和「状态转移方程」的概念\n3. 先练习「一维DP」，再学习「二维DP」',
-        references: [
-          { title: '动态规划入门讲义', source: '知识点：DP 入门' },
-          { title: '爬楼梯题解', source: 'LeetCode 70' },
-        ],
+        content: data.message,
+        references: data.references?.length ? data.references : undefined,
       }
       setMessages((prev) => [...prev, aiResponse])
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '请求失败，请重试'
+      setError(message)
+      setLastFailedInput(text)
+    } finally {
       setIsLoading(false)
-    }, 1500)
+    }
+  }
+
+  const handleSend = () => {
+    send(input)
+  }
+
+  const handleRetry = () => {
+    // Synchronously compute the cleaned message list (remove the failed
+    // trailing user message), then setMessages explicitly BEFORE calling
+    // send() with the same cleaned list. This guarantees the retry's history
+    // is built from `cleanedMessages`, not the stale closure `messages`.
+    let lastUserIdx = -1
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].role === 'user') {
+        lastUserIdx = i
+        break
+      }
+    }
+    const cleanedMessages = lastUserIdx === -1 ? messages : messages.slice(0, lastUserIdx)
+    setMessages(cleanedMessages)
+    setError(null)
+    send(lastFailedInput, cleanedMessages)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -109,9 +159,11 @@ const AIChat: React.FC = () => {
                       <div
                         key={idx}
                         className="flex items-center gap-2 text-sm text-blue-600 hover:underline cursor-pointer"
+                        title={ref.source}
                       >
                         <BookOpen size={14} />
-                        {ref.title}
+                        <span>{ref.title}</span>
+                        <span className="text-xs text-gray-400">({ref.source})</span>
                       </div>
                     ))}
                   </div>
@@ -145,7 +197,24 @@ const AIChat: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {messages.length <= 1 && (
+        {error && (
+          <div className="px-6 py-3 bg-red-50 border-t border-red-100 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-red-700 text-sm">
+              <AlertCircle size={16} />
+              <span>请求失败：{error}</span>
+            </div>
+            <button
+              onClick={handleRetry}
+              disabled={isLoading}
+              className="flex items-center gap-1 px-3 py-1.5 bg-red-600 text-white rounded-lg text-sm hover:bg-red-700 disabled:opacity-50"
+            >
+              <RefreshCw size={14} />
+              重试
+            </button>
+          </div>
+        )}
+
+        {messages.length <= 1 && !isLoading && (
           <div className="px-6 pb-4">
             <p className="text-sm text-gray-500 mb-2">常见问题：</p>
             <div className="flex flex-wrap gap-2">
