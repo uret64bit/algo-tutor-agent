@@ -1,10 +1,11 @@
-from enum import Enum as PyEnum
+from enum import StrEnum
 from typing import TYPE_CHECKING
 from uuid import UUID
 
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, Text
-from sqlalchemy.dialects.postgresql import JSONB, UUID as PGUUID
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -14,13 +15,13 @@ if TYPE_CHECKING:
     from app.models.knowledge import KnowledgePoint
 
 
-class ProblemDifficulty(str, PyEnum):
+class ProblemDifficulty(StrEnum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
 
 
-class ProblemStatus(str, PyEnum):
+class ProblemStatus(StrEnum):
     DRAFT = "draft"
     PUBLISHED = "published"
 
@@ -32,12 +33,20 @@ class Problem(UUIDMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(300), nullable=False, unique=True, index=True)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     difficulty: Mapped[ProblemDifficulty] = mapped_column(
-        SAEnum(ProblemDifficulty, name="problem_difficulty"),
+        SAEnum(
+            ProblemDifficulty,
+            name="problem_difficulty",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
         nullable=False,
         default=ProblemDifficulty.EASY,
     )
     status: Mapped[ProblemStatus] = mapped_column(
-        SAEnum(ProblemStatus, name="problem_status"),
+        SAEnum(
+            ProblemStatus,
+            name="problem_status",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
         nullable=False,
         default=ProblemStatus.DRAFT,
     )
@@ -85,7 +94,12 @@ class ProblemVariant(UUIDMixin, TimestampMixin, Base):
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     description: Mapped[str] = mapped_column(Text, nullable=False)
     difficulty: Mapped[ProblemDifficulty] = mapped_column(
-        SAEnum(ProblemDifficulty, name="problem_difficulty"), nullable=False
+        SAEnum(
+            ProblemDifficulty,
+            name="problem_difficulty",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
     )
     test_cases: Mapped[list[dict]] = mapped_column(JSONB, nullable=False, default=list)
     time_limit_ms: Mapped[int] = mapped_column(Integer, nullable=False, default=1000)
@@ -134,6 +148,4 @@ class SolutionComment(UUIDMixin, TimestampMixin, Base):
     )
 
     solution: Mapped[Solution] = relationship(Solution, backref="comments")
-    parent: Mapped["SolutionComment | None"] = relationship(
-        "SolutionComment", remote_side="SolutionComment.id"
-    )
+    parent: Mapped["SolutionComment | None"] = relationship("SolutionComment", remote_side="SolutionComment.id")

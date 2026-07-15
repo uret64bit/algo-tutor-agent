@@ -1,7 +1,8 @@
 import axios from 'axios'
+import type { AgentChatRequest, AgentChatResponse } from '../types'
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api',
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8000/api/v1',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -37,29 +38,27 @@ export const authApi = {
 }
 
 export const knowledgeApi = {
-  getTree: () => api.get('/knowledge/tree'),
-  getById: (id: number) => api.get(`/knowledge/${id}`),
-  getLectures: (id: number) => api.get(`/knowledge/${id}/lectures`),
+  getTree: () => api.get('/knowledge/'),
+  getById: (id: string) => api.get(`/knowledge/${id}`),
+  getLectures: (id: string) => api.get(`/knowledge/${id}/lectures`),
 }
 
 export const problemsApi = {
   list: (params?: {
     page?: number
     page_size?: number
-    difficulty?: number
-    knowledge_point?: number
+    difficulty?: 'easy' | 'medium' | 'hard'
     search?: string
-  }) => api.get('/problems', { params }),
-  getById: (id: number) => api.get(`/problems/${id}`),
-  submit: (id: number, code: string, language: string) =>
+  }) => api.get('/problems/', { params }),
+  getById: (id: string) => api.get(`/problems/${id}`),
+  submit: (id: string, code: string, language: string) =>
     api.post(`/problems/${id}/submit`, { code, language }),
-  getHints: (id: number, level: number) => api.get(`/problems/${id}/hints`, { params: { level } }),
-  getSubmissions: (id: number) => api.get(`/problems/${id}/submissions`),
+  getHints: (id: string, level: number) => api.get(`/problems/${id}/hints`, { params: { level } }),
+  getSubmissions: (id: string) => api.get(`/problems/${id}/submissions`),
 }
 
-export const ragApi = {
-  chat: (message: string, history: { role: string; content: string }[]) =>
-    api.post('/rag/chat', { message, history }),
+export const agentApi = {
+  chat: (req: AgentChatRequest) => api.post<AgentChatResponse>('/agent/chat', req),
 }
 
 export const progressApi = {
@@ -69,22 +68,22 @@ export const progressApi = {
 
 export const reviewApi = {
   getList: () => api.get('/review/list'),
-  submitReview: (id: number, correct: boolean) => api.post(`/review/${id}/submit`, { correct }),
+  submitReview: (id: string, correct: boolean) => api.post(`/review/${id}/submit`, { correct }),
 }
 
 export const notificationApi = {
   list: () => api.get('/notifications'),
-  markAsRead: (id: number) => api.post(`/notifications/${id}/read`),
+  markAsRead: (id: string) => api.post(`/notifications/${id}/read`),
   markAllAsRead: () => api.post('/notifications/read-all'),
 }
 
 export const discussionApi = {
-  getSolutions: (problemId: number) => api.get(`/problems/${problemId}/solutions`),
-  getSolutionById: (id: number) => api.get(`/solutions/${id}`),
-  createSolution: (problemId: number, data: { title: string; content: string; language: string }) =>
+  getSolutions: (problemId: string) => api.get(`/problems/${problemId}/solutions`),
+  getSolutionById: (id: string) => api.get(`/solutions/${id}`),
+  createSolution: (problemId: string, data: { title: string; content: string; language: string }) =>
     api.post(`/problems/${problemId}/solutions`, data),
-  likeSolution: (id: number) => api.post(`/solutions/${id}/like`),
-  getComments: (solutionId: number) => api.get(`/solutions/${solutionId}/comments`),
-  createComment: (solutionId: number, content: string) =>
+  likeSolution: (id: string) => api.post(`/solutions/${id}/like`),
+  getComments: (solutionId: string) => api.get(`/solutions/${solutionId}/comments`),
+  createComment: (solutionId: string, content: string) =>
     api.post(`/solutions/${solutionId}/comments`, { content }),
 }

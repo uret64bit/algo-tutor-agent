@@ -1,8 +1,10 @@
-from enum import Enum as PyEnum
+from enum import StrEnum
 from typing import TYPE_CHECKING
+from uuid import UUID
 
 from sqlalchemy import Enum as SAEnum
 from sqlalchemy import ForeignKey, Integer, String, Text
+from sqlalchemy.dialects.postgresql import UUID as PGUUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.core.database import Base
@@ -12,7 +14,7 @@ if TYPE_CHECKING:
     from app.models.problem import Problem
 
 
-class KnowledgePointDifficulty(str, PyEnum):
+class KnowledgePointDifficulty(StrEnum):
     EASY = "easy"
     MEDIUM = "medium"
     HARD = "hard"
@@ -25,21 +27,25 @@ class KnowledgePoint(UUIDMixin, TimestampMixin, Base):
     slug: Mapped[str] = mapped_column(String(200), nullable=False, unique=True, index=True)
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
     difficulty: Mapped[KnowledgePointDifficulty] = mapped_column(
-        SAEnum(KnowledgePointDifficulty, name="knowledge_difficulty"),
+        SAEnum(
+            KnowledgePointDifficulty,
+            name="knowledge_difficulty",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
         nullable=False,
         default=KnowledgePointDifficulty.EASY,
     )
-    parent_id: Mapped[str | None] = mapped_column(
-        ForeignKey("knowledge_points.id", ondelete="SET NULL"), nullable=True
+    parent_id: Mapped[UUID | None] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("knowledge_points.id", ondelete="SET NULL"),
+        nullable=True,
     )
     order: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
     parent: Mapped["KnowledgePoint | None"] = relationship(
         "KnowledgePoint", remote_side="KnowledgePoint.id", back_populates="children"
     )
-    children: Mapped[list["KnowledgePoint"]] = relationship(
-        "KnowledgePoint", back_populates="parent", cascade="all"
-    )
+    children: Mapped[list["KnowledgePoint"]] = relationship("KnowledgePoint", back_populates="parent", cascade="all")
     prerequisites: Mapped[list["KnowledgePrerequisite"]] = relationship(
         "KnowledgePrerequisite",
         foreign_keys="KnowledgePrerequisite.knowledge_id",
@@ -54,22 +60,24 @@ class KnowledgePoint(UUIDMixin, TimestampMixin, Base):
 class KnowledgePrerequisite(UUIDMixin, Base):
     __tablename__ = "knowledge_prerequisites"
 
-    knowledge_id: Mapped[str] = mapped_column(
-        ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False
+    knowledge_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        nullable=False,
     )
-    prerequisite_id: Mapped[str] = mapped_column(
-        ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False
+    prerequisite_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        nullable=False,
     )
 
     knowledge: Mapped[KnowledgePoint] = relationship(
         KnowledgePoint, foreign_keys=[knowledge_id], back_populates="prerequisites"
     )
-    prerequisite: Mapped[KnowledgePoint] = relationship(
-        KnowledgePoint, foreign_keys=[prerequisite_id]
-    )
+    prerequisite: Mapped[KnowledgePoint] = relationship(KnowledgePoint, foreign_keys=[prerequisite_id])
 
 
-class LectureLevel(str, PyEnum):
+class LectureLevel(StrEnum):
     CARD = "card"
     STANDARD = "standard"
     DEEP = "deep"
@@ -78,11 +86,19 @@ class LectureLevel(str, PyEnum):
 class Lecture(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "lectures"
 
-    knowledge_id: Mapped[str] = mapped_column(
-        ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False, index=True
+    knowledge_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     level: Mapped[LectureLevel] = mapped_column(
-        SAEnum(LectureLevel, name="lecture_level"), nullable=False
+        SAEnum(
+            LectureLevel,
+            name="lecture_level",
+            values_callable=lambda enum: [item.value for item in enum],
+        ),
+        nullable=False,
     )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     content: Mapped[str] = mapped_column(Text, nullable=False)
@@ -93,8 +109,11 @@ class Lecture(UUIDMixin, TimestampMixin, Base):
 class CodeTemplate(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "code_templates"
 
-    knowledge_id: Mapped[str] = mapped_column(
-        ForeignKey("knowledge_points.id", ondelete="CASCADE"), nullable=False, index=True
+    knowledge_id: Mapped[UUID] = mapped_column(
+        PGUUID(as_uuid=True),
+        ForeignKey("knowledge_points.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
     )
     language: Mapped[str] = mapped_column(String(50), nullable=False)
     template_code: Mapped[str] = mapped_column(Text, nullable=False)

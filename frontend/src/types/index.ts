@@ -1,5 +1,5 @@
 export interface User {
-  id: number
+  id: string
   email: string
   username: string
   avatar?: string
@@ -7,31 +7,35 @@ export interface User {
   created_at: string
 }
 
+export type Difficulty = 'easy' | 'medium' | 'hard'
+
 export interface KnowledgePoint {
-  id: number
+  id: string
   name: string
-  description: string
-  difficulty: 1 | 2 | 3 | 4 | 5
-  prerequisites: number[]
-  parent_id?: number
-  children?: KnowledgePoint[]
-  mastery_level?: number
-  status: 'not_started' | 'learning' | 'mastered'
+  description: string | null
+  difficulty: Difficulty
+  parent_id: string | null
+  order: number
 }
 
 export interface Problem {
-  id: number
+  id: string
   title: string
+  slug: string
   description: string
-  difficulty: 1 | 2 | 3 | 4 | 5
-  knowledge_points: number[]
-  acceptance_rate: number
-  total_submissions: number
-  time_limit: number
-  memory_limit: number
-  sample_input?: string
-  sample_output?: string
+  difficulty: Difficulty
+  status: 'draft' | 'published'
+  time_limit_ms: number
+  memory_limit_kb: number
+  sample_input?: string | null
+  sample_output?: string | null
+  hints?: string[] | null
+  solution_template?: Record<string, unknown> | null
+  knowledge_point_ids: string[]
+  submit_count: number
+  accepted_count: number
   created_at: string
+  updated_at: string
 }
 
 export interface ProblemListResponse {
@@ -39,21 +43,21 @@ export interface ProblemListResponse {
   total: number
   page: number
   page_size: number
+  total_pages: number
 }
 
 export interface Lecture {
-  id: number
-  knowledge_point_id: number
-  level: 1 | 2 | 3
+  id: string
+  knowledge_id: string
+  level: 'card' | 'standard' | 'deep'
   title: string
   content: string
-  template_code?: Record<string, string>
 }
 
 export interface Submission {
-  id: number
-  problem_id: number
-  user_id: number
+  id: string
+  problem_id: string
+  user_id: string
   code: string
   language: 'cpp' | 'java' | 'python'
   status: 'pending' | 'judging' | 'AC' | 'WA' | 'TLE' | 'RE' | 'CE'
@@ -68,22 +72,22 @@ export interface ChatMessage {
   id: string
   role: 'user' | 'assistant'
   content: string
-  references?: { title: string; source: string }[]
+  references?: AgentReference[]
   created_at: string
 }
 
 export interface WrongAnswer {
-  id: number
+  id: string
   problem: Problem
   error_type: 'WA' | 'TLE' | 'RE'
   error_message?: string
-  submission_id: number
+  submission_id: string
   created_at: string
   similar_problems?: Problem[]
 }
 
 export interface Notification {
-  id: number
+  id: string
   type: 'review' | 'push' | 'system'
   title: string
   content: string
@@ -93,7 +97,7 @@ export interface Notification {
 }
 
 export interface ReviewItem {
-  id: number
+  id: string
   knowledge_point: KnowledgePoint
   next_review_date: string
   stage: number
@@ -101,8 +105,8 @@ export interface ReviewItem {
 }
 
 export interface Solution {
-  id: number
-  problem_id: number
+  id: string
+  problem_id: string
   user: User
   title: string
   content: string
@@ -114,8 +118,8 @@ export interface Solution {
 }
 
 export interface Comment {
-  id: number
-  solution_id: number
+  id: string
+  solution_id: string
   user: User
   content: string
   likes: number
@@ -156,4 +160,34 @@ export interface JudgeResult {
   }[]
   complexity_analysis: string
   code_review: string
+}
+
+// ===== Agent types =====
+
+export interface AgentReference {
+  type: 'problem' | 'knowledge'
+  id: string
+  title: string
+  source: string
+}
+
+export interface AgentToolCall {
+  name: 'execute_code' | 'search_problems' | 'search_knowledge'
+  status: 'success' | 'error'
+}
+
+export interface AgentChatRequest {
+  message: string
+  history: { role: 'user' | 'assistant'; content: string }[]
+  context?: {
+    problem_id?: string
+    language?: 'python' | 'cpp' | 'java'
+    code?: string
+  }
+}
+
+export interface AgentChatResponse {
+  message: string
+  references: AgentReference[]
+  tool_calls: AgentToolCall[]
 }

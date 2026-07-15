@@ -1,8 +1,7 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import {
   ArrowLeft,
-  Play,
   Lightbulb,
   RotateCcw,
   Send,
@@ -10,48 +9,139 @@ import {
   XCircle,
   Clock,
   Cpu,
+  AlertCircle,
 } from 'lucide-react'
 import Editor from '@monaco-editor/react'
+import { agentApi, problemsApi } from '../utils/api'
+import type { Problem } from '../types'
+
+type Lang = 'python' | 'cpp' | 'java'
+type ExecStatus = 'success' | 'compile_error' | 'runtime_error' | 'timeout' | 'internal_error'
+
+interface ExecResult {
+  status: ExecStatus
+  stdout: string
+  stderr: string
+  exit_code: number
+  time_used_ms: number
+  truncated: boolean
+}
+
+const DIFFICULTY_LABEL: Record<string, string> = {
+  easy: '简单',
+  medium: '中等',
+  hard: '困难',
+}
+const DIFFICULTY_STYLE: Record<string, string> = {
+  easy: 'bg-green-100 text-green-700',
+  medium: 'bg-yellow-100 text-yellow-700',
+  hard: 'bg-red-100 text-red-700',
+}
 
 const ProblemDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
-  const [code, setCode] = useState(`def two_sum(nums, target):
-    # 在这里写你的代码
-    pass`)
-  const [language, setLanguage] = useState('python')
+  const [problem, setProblem] = useState<Problem | null>(null)
+  const [problemLoading, setProblemLoading] = useState(true)
+  const [problemError, setProblemError] = useState<string | null>(null)
+  const [code, setCode] = useState('')
+  const [language, setLanguage] = useState<Lang>('python')
   const [isJudging, setIsJudging] = useState(false)
-  const [result, setResult] = useState<any>(null)
+  const [result, setResult] = useState<ExecResult | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [hintLevel, setHintLevel] = useState(0)
 
-  const hints = [
-    '想想什么数据结构可以快速查找元素？',
-    '哈希表可以在 O(1) 时间内查找，尝试用哈希表存储已遍历的数字。',
-    '遍历数组，对于每个数字，检查 target - num 是否在哈希表中。如果存在，返回结果；否则将当前数字加入哈希表。',
-  ]
+  // Load real problem by UUID.
+  useEffect(() => {
+    if (!id) return
+    setProblemLoading(true)
+    setProblemError(null)
+    problemsApi
+      .getById(id)
+      .then((resp) => {
+        const p = resp.data as Problem
+        setProblem(p)
+        // Initialize code editor from solution template if available.
+        const tpl = (p.solution_template as Record<string, string> | null)?.[language] || ''
+        setCode(tpl || '# 在这里写你的代码\n')
+      })
+      .catch((err: unknown) => {
+        const msg = err instanceof Error ? err.message : '题目加载失败'
+        setProblemError(msg)
+      })
+      .finally(() => setProblemLoading(false))
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id])
+
+  if (problemLoading) {
+    return (
+      <div className="flex items-center justify-center h-[calc(100vh-4rem)] text-gray-500">
+        题目加载中...
+      </div>
+    )
+  }
+
+  if (problemError || !problem) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[calc(100vh-4rem)] gap-4">
+        <AlertCircle size={40} className="text-red-500" />
+        <p className="text-gray-700">{problemError || '题目不存在'}</p>
+        <Link to="/problems" className="text-blue-600 hover:underline">
+          返回题目列表
+        </Link>
+      </div>
+    )
+  }
+
+  const hints = problem.hints || []
 
   const handleSubmit = async () => {
     setIsJudging(true)
     setResult(null)
-    setTimeout(() => {
-      setResult({
-        status: 'AC',
-        time_used: 48,
-        memory_used: 17.2,
-        complexity_analysis: '时间复杂度 O(n)，空间复杂度 O(n)',
-        code_review: '代码实现正确，使用了哈希表优化查找效率。可以考虑添加输入验证和异常处理。',
+    setError(null)
+    try {
+      // 通过 Agent chat context 调用 execute_code 工具执行用户代码。
+      // Agent 返回结构化 tool_calls 状态，前端据此展示执行结果。
+      const resp = await agentApi.chat({
+        message:
+          '请执行我当前的代码，并告诉我运行结果（stdout/stderr/exit_code）以及是否通过样例。',
+        history: [],
+        context: {
+          problem_id: id,
+          language,
+          code,
+        },
       })
+      const data = resp.data
+      const execCall = data.tool_calls?.find((tc) => tc.name === 'execute_code')
+      // 仅当 execute_code 工具被调用且状态为 success 时才认为执行成功；
+      // 否则一律视为 internal_error，禁止固定显示 AC。
+      const status: ExecStatus = execCall?.status === 'success' ? 'success' : 'internal_error'
+      setResult({
+        status,
+        stdout: '',
+        stderr: status === 'internal_error' ? data.message : '',
+        exit_code: status === 'success' ? 0 : -1,
+        time_used_ms: 0,
+        truncated: false,
+      })
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '提交失败，请重试'
+      setError(msg)
+    } finally {
       setIsJudging(false)
-    }, 2000)
+    }
   }
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'AC':
+      case 'success':
         return 'text-green-600 bg-green-50'
-      case 'WA':
+      case 'runtime_error':
         return 'text-red-600 bg-red-50'
-      case 'TLE':
+      case 'timeout':
         return 'text-orange-600 bg-orange-50'
+      case 'compile_error':
+        return 'text-red-600 bg-red-50'
       default:
         return 'text-gray-600 bg-gray-50'
     }
@@ -59,17 +149,23 @@ const ProblemDetail: React.FC = () => {
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'AC':
-        return '通过 (Accepted)'
-      case 'WA':
-        return '答案错误 (Wrong Answer)'
-      case 'TLE':
-        return '超时 (Time Limit Exceeded)'
-      case 'RE':
+      case 'success':
+        return '运行成功'
+      case 'runtime_error':
         return '运行错误 (Runtime Error)'
+      case 'timeout':
+        return '超时 (Time Limit Exceeded)'
+      case 'compile_error':
+        return '编译错误 (Compile Error)'
+      case 'internal_error':
+        return '执行失败'
       default:
         return status
     }
+  }
+
+  const getStatusIcon = (status: string) => {
+    return status === 'success' ? <CheckCircle size={18} /> : <XCircle size={18} />
   }
 
   return (
@@ -78,51 +174,48 @@ const ProblemDetail: React.FC = () => {
         <Link to="/problems" className="p-2 hover:bg-gray-100 rounded-lg">
           <ArrowLeft size={20} />
         </Link>
-        <h1 className="text-xl font-bold text-gray-900">1. 两数之和</h1>
-        <span className="px-2 py-1 text-xs bg-green-100 text-green-700 rounded">简单</span>
+        <h1 className="text-xl font-bold text-gray-900">{problem.title}</h1>
+        <span
+          className={`px-2 py-1 text-xs rounded ${DIFFICULTY_STYLE[problem.difficulty] || 'bg-gray-100 text-gray-700'}`}
+        >
+          {DIFFICULTY_LABEL[problem.difficulty] || problem.difficulty}
+        </span>
+        <span className="text-xs text-gray-500">
+          时间限制 {problem.time_limit_ms}ms / 内存限制 {Math.round(problem.memory_limit_kb / 1024)}
+          MB
+        </span>
       </div>
 
       <div className="flex flex-1 overflow-hidden">
         <div className="w-1/2 border-r border-gray-200 overflow-y-auto p-6 bg-white">
           <div className="prose max-w-none">
             <h2 className="text-lg font-semibold">题目描述</h2>
-            <p className="text-gray-700 mt-2">
-              给定一个整数数组 nums 和一个整数目标值 target，请你在该数组中找出和为目标值 target
-              的那两个整数，并返回它们的数组下标。
-            </p>
-            <p className="text-gray-700 mt-2">
-              你可以假设每种输入只会对应一个答案，并且你不能使用两次相同的元素。
-            </p>
+            <p className="text-gray-700 mt-2 whitespace-pre-wrap">{problem.description}</p>
 
-            <h3 className="text-md font-semibold mt-6">示例 1：</h3>
-            <div className="bg-gray-50 p-4 rounded-lg">
-              <p>
-                <strong>输入：</strong>nums = [2,7,11,15], target = 9
-              </p>
-              <p>
-                <strong>输出：</strong>[0,1]
-              </p>
-              <p>
-                <strong>解释：</strong>因为 nums[0] + nums[1] == 9 ，返回 [0, 1] 。
-              </p>
-            </div>
+            {problem.sample_input && (
+              <>
+                <h3 className="text-md font-semibold mt-6">样例输入：</h3>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <pre className="text-sm text-gray-800 whitespace-pre-wrap">
+                    {problem.sample_input}
+                  </pre>
+                </div>
+              </>
+            )}
 
-            <h3 className="text-md font-semibold mt-6">提示：</h3>
-            <ul className="list-disc list-inside text-gray-700">
-              <li>
-                2 {'<='} nums.length {'<='} 10^4
-              </li>
-              <li>
-                -10^9 {'<='} nums[i] {'<='} 10^9
-              </li>
-              <li>
-                -10^9 {'<='} target {'<='} 10^9
-              </li>
-              <li>只会存在一个有效答案</li>
-            </ul>
+            {problem.sample_output && (
+              <>
+                <h3 className="text-md font-semibold mt-6">样例输出：</h3>
+                <div className="bg-gray-50 p-4 rounded-lg">
+                  <pre className="text-sm text-gray-800 whitespace-pre-wrap">
+                    {problem.sample_output}
+                  </pre>
+                </div>
+              </>
+            )}
           </div>
 
-          {hintLevel > 0 && (
+          {hintLevel > 0 && hints.length > 0 && (
             <div className="mt-6">
               <h3 className="text-md font-semibold flex items-center gap-2 text-yellow-600">
                 <Lightbulb size={18} />
@@ -135,7 +228,7 @@ const ProblemDetail: React.FC = () => {
           )}
 
           <div className="mt-6 flex gap-2">
-            {hintLevel < 3 && (
+            {hintLevel < hints.length && (
               <button
                 onClick={() => setHintLevel(hintLevel + 1)}
                 className="flex items-center gap-2 px-4 py-2 bg-yellow-100 text-yellow-700 rounded-lg hover:bg-yellow-200 transition-colors"
@@ -151,7 +244,7 @@ const ProblemDetail: React.FC = () => {
           <div className="flex items-center justify-between px-4 py-2 bg-gray-800 border-b border-gray-700">
             <select
               value={language}
-              onChange={(e) => setLanguage(e.target.value)}
+              onChange={(e) => setLanguage(e.target.value as Lang)}
               className="bg-gray-700 text-gray-200 px-3 py-1.5 rounded border-none text-sm outline-none"
             >
               <option value="python">Python 3</option>
@@ -193,35 +286,50 @@ const ProblemDetail: React.FC = () => {
             />
           </div>
 
+          {error && (
+            <div className="border-t border-gray-700 bg-red-900/30 p-4 flex items-center gap-2 text-red-300 text-sm">
+              <AlertCircle size={16} />
+              <span>{error}</span>
+            </div>
+          )}
+
           {result && (
             <div className="border-t border-gray-700 bg-gray-800 p-4 max-h-64 overflow-y-auto">
               <div
                 className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${getStatusColor(result.status)} mb-4`}
               >
-                {result.status === 'AC' ? <CheckCircle size={18} /> : <XCircle size={18} />}
+                {getStatusIcon(result.status)}
                 <span className="font-medium">{getStatusText(result.status)}</span>
               </div>
 
               <div className="flex gap-6 mb-4">
                 <div className="flex items-center gap-2 text-gray-300">
                   <Clock size={16} />
-                  <span>{result.time_used} ms</span>
+                  <span>{result.time_used_ms} ms</span>
                 </div>
                 <div className="flex items-center gap-2 text-gray-300">
                   <Cpu size={16} />
-                  <span>{result.memory_used} MB</span>
+                  <span>exit {result.exit_code}</span>
                 </div>
               </div>
 
               <div className="space-y-3">
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">复杂度分析</p>
-                  <p className="text-gray-200 text-sm">{result.complexity_analysis}</p>
-                </div>
-                <div>
-                  <p className="text-sm text-gray-400 mb-1">代码 Review</p>
-                  <p className="text-gray-200 text-sm">{result.code_review}</p>
-                </div>
+                {result.stdout && (
+                  <div>
+                    <p className="text-sm text-gray-400 mb-1">标准输出</p>
+                    <pre className="text-gray-200 text-sm whitespace-pre-wrap bg-gray-900 p-2 rounded">
+                      {result.stdout}
+                    </pre>
+                  </div>
+                )}
+                {result.stderr && (
+                  <div>
+                    <p className="text-sm text-gray-400 mb-1">标准错误 / 说明</p>
+                    <pre className="text-red-300 text-sm whitespace-pre-wrap bg-gray-900 p-2 rounded">
+                      {result.stderr}
+                    </pre>
+                  </div>
+                )}
               </div>
             </div>
           )}

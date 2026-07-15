@@ -1,10 +1,7 @@
 from datetime import datetime
-from typing import Generic, TypeVar
 from uuid import UUID
 
 from pydantic import BaseModel
-
-T = TypeVar("T")
 
 
 class BaseSchema(BaseModel):
@@ -26,7 +23,7 @@ class PageParams(BaseSchema):
     page_size: int = 20
 
 
-class PageResponse(BaseSchema, Generic[T]):
+class PageResponse[T](BaseSchema):
     items: list[T]
     total: int
     page: int
