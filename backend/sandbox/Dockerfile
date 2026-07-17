@@ -3,8 +3,9 @@
 FROM python:3.12-slim
 
 # 安装 C++ 与 Java 工具链
+# python:3.12-slim 基于 Debian Trixie，源中默认 JDK 为 openjdk-21
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc g++ openjdk-17-jdk-headless ca-certificates && \
+    gcc g++ openjdk-21-jdk-headless ca-certificates && \
     rm -rf /var/lib/apt/lists/*
 
 # 非 root 用户

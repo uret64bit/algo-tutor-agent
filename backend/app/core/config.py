@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://redis:6379/0"
 
     OPENAI_API_KEY: str | None = None
+    OPENAI_BASE_URL: str | None = None
     OPENAI_MODEL: str = "gpt-4o-mini"
     OPENAI_REQUEST_TIMEOUT_SEC: float = 30.0
 
@@ -42,6 +43,7 @@ class Settings(BaseSettings):
     RAG_DEFAULT_LIMIT: int = 5
     RAG_MAX_LIMIT: int = 10
 
+    # CORS（从 .env 读 list[str] 时需写成 JSON 数组：["http://..."]）
     CORS_ORIGINS: list[str] = ["http://localhost:5173"]
 
     class Config:

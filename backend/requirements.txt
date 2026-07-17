@@ -14,7 +14,7 @@ langchain==0.3.19
 langchain-openai==0.3.6
 langchain-text-splitters==0.3.6
 pgvector==0.3.6
-docker==7.4.0
+docker==7.2.0
 ruff==0.8.4
 python-dotenv==1.0.1
 openai==1.59.7

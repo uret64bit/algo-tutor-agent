@@ -9,16 +9,12 @@
 
 ### 文件归属（不可跨区修改）
 ```
-backend/app/models/knowledge.py   ← A 的领地
-backend/app/models/problem.py     ← A 的领地
-backend/app/routers/auth.py       ← B 的领地
-backend/app/routers/judge.py      ← B 的领地
-backend/app/routers/knowledge.py  ← A 的领地
-backend/app/routers/problems.py   ← A 的领地
-backend/app/schemas/              ← 共享，所有人可读，A 负责维护
-backend/app/services/rag.py       ← A 的领地
-backend/app/services/judge.py     ← B 的领地
-frontend/src/                     ← C 的领地
+backend/app/models/               ← Role B 的领地
+backend/app/routers/              ← Role B 的领地
+backend/app/services/             ← Role B 的领地
+backend/app/core/                 ← Role B 的领地
+backend/app/schemas/              ← Role B 维护，Role A 可读（API 契约）
+frontend/src/                     ← Role A 的领地
 ```
 
 ### 工作流程
@@ -30,8 +26,8 @@ frontend/src/                     ← C 的领地
 
 ### API 契约 = Schemas 目录
 - 所有 API 的 Request/Response 类型定义在 `backend/app/schemas/`
-- 后端实现路由前，先定义 Schema
-- 前端开发时，先 Read Schema 文件，不应凭空编造接口
+- 后端（Role B）实现路由前，先定义 Schema
+- 前端（Role A）开发时，先 Read Schema 文件，不应凭空编造接口
 
 ## Lint & TypeCheck 命令
 - 后端 lint: `cd backend && ruff check .`

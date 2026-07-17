@@ -27,6 +27,7 @@ class OpenAIService:
 
         self.client: AsyncOpenAI = AsyncOpenAI(
             api_key=settings.OPENAI_API_KEY or "missing",
+            base_url=settings.OPENAI_BASE_URL,
             timeout=settings.OPENAI_REQUEST_TIMEOUT_SEC,
         )
 
