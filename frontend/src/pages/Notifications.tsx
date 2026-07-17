@@ -1,41 +1,59 @@
-import React from 'react'
-import { Bell, Check, CheckCheck, BookOpen, RefreshCw, AlertCircle } from 'lucide-react'
+import React, { useEffect, useState } from 'react'
+import { Bell, Check, CheckCheck, BookOpen, RefreshCw, AlertCircle, Loader2 } from 'lucide-react'
+import { notificationApi } from '../utils/api'
+import type { Notification } from '../types'
 
 const Notifications: React.FC = () => {
-  const notifications = [
-    {
-      id: 1,
-      type: 'review',
-      title: '复习提醒',
-      content: '「哈希表」知识点已到复习时间，快来巩固一下吧！',
-      time: '10分钟前',
-      isRead: false,
-    },
-    {
-      id: 2,
-      type: 'push',
-      title: '学习路径推荐',
-      content: '你已掌握「数组与链表」，建议开始学习「栈与队列」',
-      time: '2小时前',
-      isRead: false,
-    },
-    {
-      id: 3,
-      type: 'review',
-      title: '复习提醒',
-      content: '你有一道错题「最长回文子串」等待复习',
-      time: '昨天',
-      isRead: true,
-    },
-    {
-      id: 4,
-      type: 'system',
-      title: '新题上架',
-      content: '动态规划专题新增 5 道题目，快来挑战吧！',
-      time: '3天前',
-      isRead: true,
-    },
-  ]
+  const [notifications, setNotifications] = useState<Notification[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  const load = () => {
+    let cancelled = false
+    setLoading(true)
+    notificationApi
+      .list()
+      .then((resp) => {
+        if (!cancelled) setNotifications(resp.data as Notification[])
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : '加载消息失败')
+      })
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }
+
+  useEffect(() => {
+    load()
+  }, [])
+
+  const handleMarkAsRead = async (id: string) => {
+    // 乐观更新
+    setNotifications((prev) =>
+      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+    )
+    try {
+      await notificationApi.markAsRead(id)
+    } catch {
+      // 失败回滚
+      setNotifications((prev) =>
+        prev.map((n) => (n.id === id ? { ...n, is_read: false } : n))
+      )
+    }
+  }
+
+  const handleMarkAllAsRead = async () => {
+    const original = notifications
+    setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })))
+    try {
+      await notificationApi.markAllAsRead()
+    } catch {
+      setNotifications(original)
+    }
+  }
 
   const getIcon = (type: string) => {
     switch (type) {
@@ -59,7 +77,36 @@ const Notifications: React.FC = () => {
     }
   }
 
-  const unreadCount = notifications.filter((n) => !n.isRead).length
+  const unreadCount = notifications.filter((n) => !n.is_read).length
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-gray-500">
+        <Loader2 className="animate-spin mr-2" size={20} />
+        加载中...
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">消息中心</h1>
+          <p className="text-gray-600 mt-2">查看系统通知和学习提醒</p>
+        </div>
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex items-start gap-3 text-yellow-800">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium">消息中心暂不可用</p>
+            <p className="mt-1 text-yellow-700">
+              后端通知 API（Task 12）尚未实现。待 Role B 完成 <code>/api/v1/notifications</code> 后此页面将自动展示真实数据。
+            </p>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -68,10 +115,15 @@ const Notifications: React.FC = () => {
           <h1 className="text-3xl font-bold text-gray-900">消息中心</h1>
           <p className="text-gray-600 mt-2">查看系统通知和学习提醒</p>
         </div>
-        <button className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
-          <CheckCheck size={18} />
-          全部已读
-        </button>
+        {unreadCount > 0 && (
+          <button
+            onClick={handleMarkAllAsRead}
+            className="flex items-center gap-2 px-4 py-2 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+          >
+            <CheckCheck size={18} />
+            全部已读
+          </button>
+        )}
       </div>
 
       <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
@@ -80,35 +132,48 @@ const Notifications: React.FC = () => {
             共 {notifications.length} 条消息，{unreadCount} 条未读
           </p>
         </div>
-        <div className="divide-y divide-gray-100">
-          {notifications.map((notification) => (
-            <div
-              key={notification.id}
-              className={`p-4 flex gap-4 hover:bg-gray-50 transition-colors ${
-                !notification.isRead ? 'bg-blue-50/30' : ''
-              }`}
-            >
+        {notifications.length === 0 ? (
+          <div className="p-12 text-center text-gray-500">
+            <Bell size={32} className="mx-auto mb-2 text-gray-400" />
+            暂无消息
+          </div>
+        ) : (
+          <div className="divide-y divide-gray-100">
+            {notifications.map((notification) => (
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBg(notification.type)}`}
+                key={notification.id}
+                className={`p-4 flex gap-4 hover:bg-gray-50 transition-colors ${
+                  !notification.is_read ? 'bg-blue-50/30' : ''
+                }`}
               >
-                {getIcon(notification.type)}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 mb-1">
-                  <p className="font-medium text-gray-900">{notification.title}</p>
-                  {!notification.isRead && <span className="w-2 h-2 bg-blue-600 rounded-full" />}
+                <div
+                  className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBg(notification.type)}`}
+                >
+                  {getIcon(notification.type)}
                 </div>
-                <p className="text-gray-600 text-sm">{notification.content}</p>
-                <p className="text-gray-400 text-xs mt-1">{notification.time}</p>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <p className="font-medium text-gray-900">{notification.title}</p>
+                    {!notification.is_read && <span className="w-2 h-2 bg-blue-600 rounded-full" />}
+                  </div>
+                  <p className="text-gray-600 text-sm">{notification.content}</p>
+                  <p className="text-gray-400 text-xs mt-1">
+                    {new Date(notification.created_at).toLocaleString()}
+                  </p>
+                </div>
+                {!notification.is_read && (
+                  <button
+                    onClick={() => handleMarkAsRead(notification.id)}
+                    className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors self-start"
+                    title="标记为已读"
+                  >
+                    <Check size={18} />
+                  </button>
+                )}
               </div>
-              {!notification.isRead && (
-                <button className="p-2 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors self-start">
-                  <Check size={18} />
-                </button>
-              )}
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   )

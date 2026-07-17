@@ -1,62 +1,49 @@
-import React from 'react'
+import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { MessageSquare, ThumbsUp, Eye, Star, ChevronRight } from 'lucide-react'
+import { MessageSquare, ThumbsUp, Star, ChevronRight, AlertCircle, Loader2 } from 'lucide-react'
+import { discussionApi } from '../utils/api'
+import type { Solution } from '../types'
 
 const Discussions: React.FC = () => {
-  const solutions = [
-    {
-      id: 1,
-      problemTitle: '两数之和',
-      problemId: 1,
-      title: '哈希表 O(n) 解法，清晰易懂',
-      author: { username: '算法大神', avatar: 'A' },
-      language: 'Python',
-      likes: 128,
-      comments: 32,
-      views: 2560,
-      isFeatured: true,
-      createdAt: '3天前',
-    },
-    {
-      id: 2,
-      problemTitle: '反转链表',
-      problemId: 2,
-      title: '递归+迭代双解法，附详细图解',
-      author: { username: '链表大师', avatar: '链' },
-      language: 'C++',
-      likes: 89,
-      comments: 15,
-      views: 1890,
-      isFeatured: true,
-      createdAt: '5天前',
-    },
-    {
-      id: 3,
-      problemTitle: '最长回文子串',
-      problemId: 5,
-      title: 'Manacher 算法 O(n) 最优解',
-      author: { username: 'DP专家', avatar: 'D' },
-      language: 'Java',
-      likes: 56,
-      comments: 8,
-      views: 1200,
-      isFeatured: false,
-      createdAt: '1周前',
-    },
-    {
-      id: 4,
-      problemTitle: '三数之和',
-      problemId: 15,
-      title: '排序+双指针，去重技巧详解',
-      author: { username: '双指针选手', avatar: '双' },
-      language: 'Python',
-      likes: 42,
-      comments: 12,
-      views: 980,
-      isFeatured: false,
-      createdAt: '1周前',
-    },
-  ]
+  const [solutions, setSolutions] = useState<Solution[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [filter, setFilter] = useState<'all' | 'featured' | 'python' | 'cpp' | 'java'>('all')
+
+  useEffect(() => {
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    // 讨论区按全局列表展示；后端尚未提供「全局题解列表」API（只有按题目查询），
+    // 这里使用 discussionApi.getSolutions 暂时打到一个空 problemId 占位上，捕获 404。
+    // 等 Role B 实现 Task 15 后端 GET /solutions 后改为独立接口。
+    discussionApi
+      .getSolutions('list')
+      .then((resp) => {
+        if (!cancelled) setSolutions(resp.data as Solution[])
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : '加载题解列表失败')
+      })
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const filtered = solutions.filter((s) => {
+    switch (filter) {
+      case 'featured':
+        return s.is_featured
+      case 'python':
+      case 'cpp':
+      case 'java':
+        return s.language?.toLowerCase() === filter
+      default:
+        return true
+    }
+  })
 
   return (
     <div className="space-y-6">
@@ -66,81 +53,99 @@ const Discussions: React.FC = () => {
       </div>
 
       <div className="flex gap-2 flex-wrap">
-        <button className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm">全部</button>
-        <button className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
-          <Star className="inline mr-1" size={14} />
-          精选题解
-        </button>
-        <button className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
-          Python
-        </button>
-        <button className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
-          C++
-        </button>
-        <button className="px-4 py-2 bg-white text-gray-700 border border-gray-200 rounded-lg text-sm hover:bg-gray-50">
-          Java
-        </button>
+        {(['all', 'featured', 'python', 'cpp', 'java'] as const).map((f) => (
+          <button
+            key={f}
+            onClick={() => setFilter(f)}
+            className={`px-4 py-2 rounded-lg text-sm transition-colors ${
+              filter === f
+                ? 'bg-blue-600 text-white'
+                : 'bg-white text-gray-700 border border-gray-200 hover:bg-gray-50'
+            }`}
+          >
+            {f === 'all' ? '全部' : f === 'featured' ? '精选题解' : f.toUpperCase()}
+          </button>
+        ))}
       </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-        <div className="divide-y divide-gray-100">
-          {solutions.map((solution) => (
-            <Link
-              key={solution.id}
-              to={`/solutions/${solution.id}`}
-              className="block p-6 hover:bg-gray-50 transition-colors"
-            >
-              <div className="flex items-start justify-between gap-4">
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 mb-2">
-                    {solution.isFeatured && (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">
-                        <Star size={12} />
-                        精选
-                      </span>
-                    )}
-                    <Link
-                      to={`/problems/${solution.problemId}`}
-                      className="text-sm text-blue-600 hover:underline"
-                      onClick={(e) => e.stopPropagation()}
-                    >
-                      {solution.problemId}. {solution.problemTitle}
-                    </Link>
-                  </div>
-                  <h3 className="text-lg font-medium text-gray-900 hover:text-blue-600 mb-2">
-                    {solution.title}
-                  </h3>
-                  <div className="flex items-center gap-4 text-sm text-gray-500">
-                    <div className="flex items-center gap-2">
-                      <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-medium">
-                        {solution.author.avatar}
-                      </div>
-                      <span>{solution.author.username}</span>
-                    </div>
-                    <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">
-                      {solution.language}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <ThumbsUp size={14} />
-                      {solution.likes}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <MessageSquare size={14} />
-                      {solution.comments}
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Eye size={14} />
-                      {solution.views}
-                    </span>
-                    <span>{solution.createdAt}</span>
-                  </div>
-                </div>
-                <ChevronRight className="text-gray-400 flex-shrink-0" size={20} />
-              </div>
-            </Link>
-          ))}
+      {loading ? (
+        <div className="flex items-center justify-center h-64 text-gray-500">
+          <Loader2 className="animate-spin mr-2" size={20} />
+          加载中...
         </div>
-      </div>
+      ) : error ? (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-6 flex items-start gap-3 text-yellow-800">
+          <AlertCircle size={20} className="flex-shrink-0 mt-0.5" />
+          <div className="text-sm">
+            <p className="font-medium">题解广场暂不可用</p>
+            <p className="mt-1 text-yellow-700">
+              后端题解 API（Task 15）尚未实现。待 Role B 完成后此页面将自动展示真实数据。
+            </p>
+          </div>
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-12 text-center text-gray-500">
+          暂无题解，去题库做道题并分享你的思路吧
+        </div>
+      ) : (
+        <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+          <div className="divide-y divide-gray-100">
+            {filtered.map((solution) => (
+              <Link
+                key={solution.id}
+                to={`/solutions/${solution.id}`}
+                className="block p-6 hover:bg-gray-50 transition-colors"
+              >
+                <div className="flex items-start justify-between gap-4">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-2">
+                      {solution.is_featured && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 bg-yellow-100 text-yellow-700 rounded text-xs">
+                          <Star size={12} />
+                          精选
+                        </span>
+                      )}
+                      <Link
+                        to={`/problems/${solution.problem_id}`}
+                        className="text-sm text-blue-600 hover:underline"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        题目 {solution.problem_id.slice(0, 8)}…
+                      </Link>
+                    </div>
+                    <h3 className="text-lg font-medium text-gray-900 hover:text-blue-600 mb-2">
+                      {solution.title}
+                    </h3>
+                    <div className="flex items-center gap-4 text-sm text-gray-500">
+                      <div className="flex items-center gap-2">
+                        <div className="w-6 h-6 bg-blue-100 rounded-full flex items-center justify-center text-blue-600 text-xs font-medium">
+                          {solution.user.username.charAt(0).toUpperCase()}
+                        </div>
+                        <span>{solution.user.username}</span>
+                      </div>
+                      {solution.language && (
+                        <span className="px-2 py-0.5 bg-gray-100 rounded text-xs">
+                          {solution.language}
+                        </span>
+                      )}
+                      <span className="flex items-center gap-1">
+                        <ThumbsUp size={14} />
+                        {solution.likes}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <MessageSquare size={14} />
+                        {solution.comments_count}
+                      </span>
+                      <span>{new Date(solution.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <ChevronRight className="text-gray-400 flex-shrink-0" size={20} />
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
 }

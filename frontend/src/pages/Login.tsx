@@ -17,8 +17,9 @@ const Login: React.FC = () => {
     try {
       await login(email, password)
       navigate('/')
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '登录失败，请检查邮箱和密码')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || '登录失败，请检查邮箱和密码')
     }
   }
 

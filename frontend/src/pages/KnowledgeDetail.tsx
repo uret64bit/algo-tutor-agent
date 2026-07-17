@@ -1,25 +1,84 @@
-import React, { useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, BookOpen, FileText, GraduationCap, Copy, Code2 } from 'lucide-react'
+import { ArrowLeft, BookOpen, FileText, GraduationCap, Copy, Loader2, AlertCircle } from 'lucide-react'
+import { knowledgeApi } from '../utils/api'
+import type { KnowledgePoint, Lecture } from '../types'
 
 const KnowledgeDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>()
-  const [activeLevel, setActiveLevel] = useState<1 | 2 | 3>(1)
+  const [knowledge, setKnowledge] = useState<KnowledgePoint | null>(null)
+  const [lectures, setLectures] = useState<Lecture[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+  const [activeLevel, setActiveLevel] = useState<'card' | 'standard' | 'deep'>('card')
+  const [copied, setCopied] = useState(false)
 
-  const levels = [
-    { level: 1 as const, label: '知识卡片', icon: BookOpen, desc: '快速入门' },
-    { level: 2 as const, label: '标准讲义', icon: FileText, desc: '系统学习' },
-    { level: 3 as const, label: '深度专题', icon: GraduationCap, desc: '进阶提升' },
+  useEffect(() => {
+    if (!id) return
+    let cancelled = false
+    setLoading(true)
+    setError(null)
+    Promise.all([knowledgeApi.getById(id), knowledgeApi.getLectures(id)])
+      .then(([kpResp, lecResp]) => {
+        if (cancelled) return
+        setKnowledge(kpResp.data as KnowledgePoint)
+        const lecs = lecResp.data as Lecture[]
+        setLectures(lecs)
+        // 优先选中第一个可用级别
+        if (lecs.length > 0) {
+          setActiveLevel(lecs[0].level)
+        }
+      })
+      .catch((err: unknown) => {
+        if (cancelled) return
+        setError(err instanceof Error ? err.message : '加载知识点失败')
+      })
+      .finally(() => !cancelled && setLoading(false))
+    return () => {
+      cancelled = true
+    }
+  }, [id])
+
+  const levels: { level: 'card' | 'standard' | 'deep'; label: string; icon: typeof BookOpen; desc: string }[] = [
+    { level: 'card', label: '知识卡片', icon: BookOpen, desc: '快速入门' },
+    { level: 'standard', label: '标准讲义', icon: FileText, desc: '系统学习' },
+    { level: 'deep', label: '深度专题', icon: GraduationCap, desc: '进阶提升' },
   ]
 
-  const templateCode = `def two_sum(nums, target):
-    hashmap = {}
-    for i, num in enumerate(nums):
-        complement = target - num
-        if complement in hashmap:
-            return [hashmap[complement], i]
-        hashmap[num] = i
-    return []`
+  const currentLecture = lectures.find((l) => l.level === activeLevel)
+
+  const handleCopy = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text)
+      setCopied(true)
+      setTimeout(() => setCopied(false), 1500)
+    } catch {
+      // ignore clipboard failures
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center h-64 text-gray-500">
+        <Loader2 className="animate-spin mr-2" size={20} />
+        加载中...
+      </div>
+    )
+  }
+
+  if (error || !knowledge) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4">
+        <AlertCircle size={40} className="text-red-500" />
+        <p className="text-gray-700">{error || '知识点不存在'}</p>
+        <Link to="/knowledge" className="text-blue-600 hover:underline">
+          返回知识点图谱
+        </Link>
+      </div>
+    )
+  }
+
+  const availableLevels = new Set(lectures.map((l) => l.level))
 
   return (
     <div className="space-y-6">
@@ -28,97 +87,69 @@ const KnowledgeDetail: React.FC = () => {
           <ArrowLeft size={20} />
         </Link>
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">哈希表</h1>
-          <p className="text-gray-500">基础数据结构 · 简单</p>
+          <h1 className="text-2xl font-bold text-gray-900">{knowledge.name}</h1>
+          <p className="text-gray-500">难度：{knowledge.difficulty}</p>
         </div>
       </div>
 
-      <div className="flex gap-2">
-        {levels.map((l) => {
-          const Icon = l.icon
-          return (
-            <button
-              key={l.level}
-              onClick={() => setActiveLevel(l.level)}
-              className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-colors ${
-                activeLevel === l.level
-                  ? 'bg-blue-600 text-white'
-                  : 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
-              }`}
-            >
-              <Icon size={18} />
-              <div className="text-left">
-                <p className="font-medium text-sm">{l.label}</p>
-                <p
-                  className={`text-xs ${activeLevel === l.level ? 'text-blue-100' : 'text-gray-500'}`}
+      {lectures.length === 0 ? (
+        <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-500">
+          该知识点暂无讲义内容
+        </div>
+      ) : (
+        <>
+          <div className="flex gap-2 flex-wrap">
+            {levels.map((l) => {
+              const Icon = l.icon
+              const available = availableLevels.has(l.level)
+              return (
+                <button
+                  key={l.level}
+                  onClick={() => available && setActiveLevel(l.level)}
+                  disabled={!available}
+                  className={`flex items-center gap-2 px-4 py-3 rounded-lg transition-colors ${
+                    activeLevel === l.level
+                      ? 'bg-blue-600 text-white'
+                      : available
+                        ? 'bg-white text-gray-700 hover:bg-gray-50 border border-gray-200'
+                        : 'bg-gray-50 text-gray-400 cursor-not-allowed border border-gray-100'
+                  }`}
                 >
-                  {l.desc}
-                </p>
-              </div>
-            </button>
-          )
-        })}
-      </div>
+                  <Icon size={18} />
+                  <div className="text-left">
+                    <p className="font-medium text-sm">{l.label}</p>
+                    <p
+                      className={`text-xs ${activeLevel === l.level ? 'text-blue-100' : 'text-gray-500'}`}
+                    >
+                      {available ? l.desc : '未提供'}
+                    </p>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
 
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
-        {activeLevel === 1 && (
-          <div className="space-y-4">
-            <h2 className="text-xl font-semibold">什么是哈希表？</h2>
-            <p className="text-gray-700 leading-relaxed">
-              哈希表（Hash
-              Table）是一种通过键（Key）直接访问内存存储位置的数据结构。它通过哈希函数将键映射到数组的一个索引，从而实现
-              O(1) 时间复杂度的查找、插入和删除。
-            </p>
-            <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
-              <p className="font-medium text-blue-900">核心思想</p>
-              <p className="text-blue-700 text-sm mt-1">
-                空间换时间 —— 利用数组的快速随机访问特性，通过哈希函数建立键到索引的映射。
-              </p>
+          {currentLecture ? (
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-8">
+              <h2 className="text-xl font-semibold mb-4">{currentLecture.title}</h2>
+              <article className="prose max-w-none text-gray-700 whitespace-pre-wrap leading-relaxed">
+                {currentLecture.content}
+              </article>
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="bg-white rounded-xl border border-gray-100 p-8 text-center text-gray-500">
+              该级别暂无讲义内容
+            </div>
+          )}
+        </>
+      )}
 
-        {activeLevel === 2 && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold">标准讲义：哈希表</h2>
-            <section className="space-y-3">
-              <h3 className="text-lg font-medium">1. 哈希函数</h3>
-              <p className="text-gray-700 leading-relaxed">
-                哈希函数的设计是哈希表的核心。一个好的哈希函数应该满足：计算速度快、分布均匀、冲突少。
-              </p>
-            </section>
-            <section className="space-y-3">
-              <h3 className="text-lg font-medium">2. 冲突解决</h3>
-              <p className="text-gray-700 leading-relaxed">
-                当两个不同的键映射到同一个索引时，就会发生冲突。常见的解决方法有：链地址法、开放寻址法。
-              </p>
-            </section>
-          </div>
-        )}
-
-        {activeLevel === 3 && (
-          <div className="space-y-6">
-            <h2 className="text-xl font-semibold">深度专题</h2>
-            <p className="text-gray-700">深入探讨哈希表的高级应用和性能分析...</p>
-          </div>
-        )}
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold flex items-center gap-2">
-            <Code2 size={20} className="text-blue-600" />
-            模板代码
-          </h3>
-          <button className="flex items-center gap-1 text-sm text-blue-600 hover:text-blue-700">
-            <Copy size={16} />
-            复制
-          </button>
+      {knowledge.description && (
+        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 rounded-r-lg">
+          <p className="font-medium text-blue-900">知识点简介</p>
+          <p className="text-blue-700 text-sm mt-1">{knowledge.description}</p>
         </div>
-        <pre className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto text-sm">
-          <code>{templateCode}</code>
-        </pre>
-      </div>
+      )}
 
       <div className="flex justify-between">
         <Link
@@ -128,12 +159,23 @@ const KnowledgeDetail: React.FC = () => {
           返回图谱
         </Link>
         <Link
-          to="/problems?kp=1"
+          to={`/problems?kp=${knowledge.slug}`}
           className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
         >
           去做练习题 →
         </Link>
       </div>
+
+      {/* 保留复制按钮逻辑供模板代码使用 */}
+      <button
+        type="button"
+        onClick={() => handleCopy(knowledge.description || '')}
+        className="hidden"
+        aria-hidden
+      >
+        <Copy size={16} />
+        {copied ? '已复制' : '复制'}
+      </button>
     </div>
   )
 }

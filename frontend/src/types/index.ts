@@ -12,6 +12,7 @@ export type Difficulty = 'easy' | 'medium' | 'hard'
 export interface KnowledgePoint {
   id: string
   name: string
+  slug: string
   description: string | null
   difficulty: Difficulty
   parent_id: string | null

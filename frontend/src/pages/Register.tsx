@@ -30,8 +30,9 @@ const Register: React.FC = () => {
     try {
       await register(email, username, password)
       navigate('/')
-    } catch (err: any) {
-      setError(err.response?.data?.detail || '注册失败，请稍后重试')
+    } catch (err: unknown) {
+      const detail = (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      setError(detail || '注册失败，请稍后重试')
     }
   }
 
