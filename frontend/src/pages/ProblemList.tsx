@@ -71,9 +71,7 @@ const ProblemList: React.FC = () => {
         <h1 className="text-3xl font-bold text-gray-900">题库</h1>
         <p className="text-gray-600 mt-2">
           按难度筛选题目，开始练习
-          {kpSlug && (
-            <span className="ml-2 text-sm text-blue-600">· 关联知识点：{kpSlug}</span>
-          )}
+          {kpSlug && <span className="ml-2 text-sm text-blue-600">· 关联知识点：{kpSlug}</span>}
         </p>
       </div>
 
@@ -136,7 +134,9 @@ const ProblemList: React.FC = () => {
                 <th className="text-left px-6 py-4 text-sm font-medium text-gray-500 w-16">状态</th>
                 <th className="text-left px-6 py-4 text-sm font-medium text-gray-500">题目</th>
                 <th className="text-left px-6 py-4 text-sm font-medium text-gray-500 w-24">难度</th>
-                <th className="text-left px-6 py-4 text-sm font-medium text-gray-500 w-28">通过率</th>
+                <th className="text-left px-6 py-4 text-sm font-medium text-gray-500 w-28">
+                  通过率
+                </th>
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">

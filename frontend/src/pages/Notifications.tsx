@@ -32,16 +32,12 @@ const Notifications: React.FC = () => {
 
   const handleMarkAsRead = async (id: string) => {
     // 乐观更新
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-    )
+    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: true } : n)))
     try {
       await notificationApi.markAsRead(id)
     } catch {
       // 失败回滚
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: false } : n))
-      )
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, is_read: false } : n)))
     }
   }
 
@@ -100,7 +96,8 @@ const Notifications: React.FC = () => {
           <div className="text-sm">
             <p className="font-medium">消息中心暂不可用</p>
             <p className="mt-1 text-yellow-700">
-              后端通知 API（Task 12）尚未实现。待 Role B 完成 <code>/api/v1/notifications</code> 后此页面将自动展示真实数据。
+              后端通知 API（Task 12）尚未实现。待 Role B 完成 <code>/api/v1/notifications</code>{' '}
+              后此页面将自动展示真实数据。
             </p>
           </div>
         </div>
@@ -147,7 +144,9 @@ const Notifications: React.FC = () => {
                 }`}
               >
                 <div
-                  className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBg(notification.type)}`}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${getIconBg(
+                    notification.type
+                  )}`}
                 >
                   {getIcon(notification.type)}
                 </div>

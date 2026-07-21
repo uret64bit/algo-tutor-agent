@@ -73,7 +73,8 @@ const WrongAnswers: React.FC = () => {
           <div className="text-sm">
             <p className="font-medium">错题本数据暂不可用</p>
             <p className="mt-1 text-yellow-700">
-              后端错题 API（Task 11）尚未实现。待 Role B 完成 <code>/api/v1/progress/wrong-answers</code> 后此页面将自动展示真实数据。
+              后端错题 API（Task 11）尚未实现。待 Role B 完成{' '}
+              <code>/api/v1/progress/wrong-answers</code> 后此页面将自动展示真实数据。
             </p>
           </div>
         </div>

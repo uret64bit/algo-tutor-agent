@@ -6,20 +6,30 @@ repos:
         args: [--fix]
       - id: ruff-format
 
-  - repo: https://github.com/pre-commit/mirrors-prettier
-    rev: v3.1.0
-    hooks:
-      - id: prettier
-        files: ^frontend/
-        types_or: [javascript, jsx, ts, tsx, css, json, markdown]
-
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v5.0.0
     hooks:
       - id: trailing-whitespace
+        exclude: ^\.trae/
       - id: end-of-file-fixer
+        exclude: ^\.trae/|^frontend/tsconfig\.tsbuildinfo$
       - id: check-yaml
       - id: check-added-large-files
         args: ['--maxkb=500']
       - id: check-merge-conflict
       - id: detect-private-key
+
+  # 本地 pre-push hook：跑 CI 等价的前端静态检查
+  # 后端 ruff 由上面的 ruff-pre-commit 在 commit 时跑（已涵盖）
+  # 用 npm --prefix 跨平台（Windows/macOS/Linux 都支持）
+  - repo: local
+    hooks:
+      - id: ci-frontend-check
+        name: Frontend (Lint + TypeCheck + Prettier + Build)
+        # npm --prefix 让命令在任意 cwd 都能进入 frontend/ 目录执行
+        entry: npm --prefix frontend run prepush-check
+        language: system
+        files: ^frontend/
+        types_or: [javascript, jsx, ts, tsx, css, json]
+        pass_filenames: false
+        stages: [pre-push]

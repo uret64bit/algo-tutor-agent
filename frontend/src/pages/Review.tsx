@@ -1,5 +1,14 @@
 import React, { useEffect, useState } from 'react'
-import { RefreshCw, Clock, BookOpen, Check, X, ChevronRight, AlertCircle, Loader2 } from 'lucide-react'
+import {
+  RefreshCw,
+  Clock,
+  BookOpen,
+  Check,
+  X,
+  ChevronRight,
+  AlertCircle,
+  Loader2,
+} from 'lucide-react'
 import { reviewApi } from '../utils/api'
 import type { ReviewItem } from '../types'
 
@@ -63,7 +72,8 @@ const Review: React.FC = () => {
           <div className="text-sm">
             <p className="font-medium">复习数据暂不可用</p>
             <p className="mt-1 text-yellow-700">
-              后端复习 API（Task 13）尚未实现。待 Role B 完成 <code>/api/v1/review/list</code> 后此页面将自动展示真实数据。
+              后端复习 API（Task 13）尚未实现。待 Role B 完成 <code>/api/v1/review/list</code>{' '}
+              后此页面将自动展示真实数据。
             </p>
           </div>
         </div>
@@ -157,7 +167,8 @@ const Review: React.FC = () => {
               <div className="bg-gray-50 p-6 rounded-xl">
                 <h3 className="font-semibold mb-2">核心要点：</h3>
                 <p className="text-gray-700 whitespace-pre-wrap">
-                  {currentItem.knowledge_point.description || '请回顾该知识点的核心概念与典型例题。'}
+                  {currentItem.knowledge_point.description ||
+                    '请回顾该知识点的核心概念与典型例题。'}
                 </p>
               </div>
 
@@ -192,7 +203,10 @@ const Review: React.FC = () => {
               </div>
               <div className="divide-y divide-gray-100">
                 {todayItems.map((item) => (
-                  <div key={item.id} className="p-4 flex items-center justify-between hover:bg-gray-50">
+                  <div
+                    key={item.id}
+                    className="p-4 flex items-center justify-between hover:bg-gray-50"
+                  >
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-lg flex items-center justify-center bg-blue-100 text-blue-600">
                         {item.problem ? <RefreshCw size={20} /> : <BookOpen size={20} />}

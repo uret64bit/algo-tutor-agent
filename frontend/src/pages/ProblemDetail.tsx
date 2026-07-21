@@ -176,7 +176,9 @@ const ProblemDetail: React.FC = () => {
         </Link>
         <h1 className="text-xl font-bold text-gray-900">{problem.title}</h1>
         <span
-          className={`px-2 py-1 text-xs rounded ${DIFFICULTY_STYLE[problem.difficulty] || 'bg-gray-100 text-gray-700'}`}
+          className={`px-2 py-1 text-xs rounded ${
+            DIFFICULTY_STYLE[problem.difficulty] || 'bg-gray-100 text-gray-700'
+          }`}
         >
           {DIFFICULTY_LABEL[problem.difficulty] || problem.difficulty}
         </span>
@@ -296,7 +298,9 @@ const ProblemDetail: React.FC = () => {
           {result && (
             <div className="border-t border-gray-700 bg-gray-800 p-4 max-h-64 overflow-y-auto">
               <div
-                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${getStatusColor(result.status)} mb-4`}
+                className={`inline-flex items-center gap-2 px-3 py-1.5 rounded-lg ${getStatusColor(
+                  result.status
+                )} mb-4`}
               >
                 {getStatusIcon(result.status)}
                 <span className="font-medium">{getStatusText(result.status)}</span>

@@ -74,11 +74,13 @@ const ProgressPage: React.FC = () => {
 
   // 通过率 < 60% 自动标记为薄弱点
   const weakPoints =
-    progress?.mastery_by_category?.filter((c) => c.value < 60).map((c) => ({
-      name: c.name,
-      rate: c.value,
-      suggestion: `建议复习 ${c.name} 相关知识点与练习题`,
-    })) || []
+    progress?.mastery_by_category
+      ?.filter((c) => c.value < 60)
+      .map((c) => ({
+        name: c.name,
+        rate: c.value,
+        suggestion: `建议复习 ${c.name} 相关知识点与练习题`,
+      })) || []
 
   if (loading) {
     return (
@@ -101,7 +103,8 @@ const ProgressPage: React.FC = () => {
           <div className="text-sm">
             <p className="font-medium">进度数据暂不可用</p>
             <p className="mt-1 text-yellow-700">
-              后端进度 API（Task 10）尚未实现。待 Role B 完成 <code>/api/v1/progress/overview</code> 后此页面将自动展示真实数据。
+              后端进度 API（Task 10）尚未实现。待 Role B 完成 <code>/api/v1/progress/overview</code>{' '}
+              后此页面将自动展示真实数据。
             </p>
           </div>
         </div>

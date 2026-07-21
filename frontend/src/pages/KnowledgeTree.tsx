@@ -100,7 +100,9 @@ const KnowledgeTree: React.FC = () => {
         </div>
       </Link>
       {node.children.length > 0 && (
-        <div className="divide-y divide-gray-100">{node.children.map((c) => renderNode(c, depth + 1))}</div>
+        <div className="divide-y divide-gray-100">
+          {node.children.map((c) => renderNode(c, depth + 1))}
+        </div>
       )}
     </div>
   )

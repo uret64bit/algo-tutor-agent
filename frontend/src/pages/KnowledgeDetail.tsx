@@ -1,6 +1,14 @@
 import React, { useEffect, useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
-import { ArrowLeft, BookOpen, FileText, GraduationCap, Copy, Loader2, AlertCircle } from 'lucide-react'
+import {
+  ArrowLeft,
+  BookOpen,
+  FileText,
+  GraduationCap,
+  Copy,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react'
 import { knowledgeApi } from '../utils/api'
 import type { KnowledgePoint, Lecture } from '../types'
 
@@ -39,7 +47,12 @@ const KnowledgeDetail: React.FC = () => {
     }
   }, [id])
 
-  const levels: { level: 'card' | 'standard' | 'deep'; label: string; icon: typeof BookOpen; desc: string }[] = [
+  const levels: {
+    level: 'card' | 'standard' | 'deep'
+    label: string
+    icon: typeof BookOpen
+    desc: string
+  }[] = [
     { level: 'card', label: '知识卡片', icon: BookOpen, desc: '快速入门' },
     { level: 'standard', label: '标准讲义', icon: FileText, desc: '系统学习' },
     { level: 'deep', label: '深度专题', icon: GraduationCap, desc: '进阶提升' },
@@ -119,7 +132,9 @@ const KnowledgeDetail: React.FC = () => {
                   <div className="text-left">
                     <p className="font-medium text-sm">{l.label}</p>
                     <p
-                      className={`text-xs ${activeLevel === l.level ? 'text-blue-100' : 'text-gray-500'}`}
+                      className={`text-xs ${
+                        activeLevel === l.level ? 'text-blue-100' : 'text-gray-500'
+                      }`}
                     >
                       {available ? l.desc : '未提供'}
                     </p>
