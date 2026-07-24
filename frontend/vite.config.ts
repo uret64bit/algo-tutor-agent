@@ -12,4 +12,14 @@ export default defineConfig({
       },
     },
   },
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // 把 monaco-editor 单独拆包，避免主 bundle 过大
+          monaco: ['monaco-editor'],
+        },
+      },
+    },
+  },
 })

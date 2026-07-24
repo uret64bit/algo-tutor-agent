@@ -1,29 +1,29 @@
 import React, { useState, useRef, useEffect } from 'react'
 import { Send, Bot, User, BookOpen, AlertCircle, RefreshCw } from 'lucide-react'
 import { agentApi } from '../utils/api'
-import type { AgentReference } from '../types'
-
-interface Message {
-  id: string
-  role: 'user' | 'assistant'
-  content: string
-  references?: AgentReference[]
-}
+import { useChatStore, LOCAL_USER_ID } from '../stores/chatStore'
+import { useAuthStore } from '../stores/authStore'
+import type { AgentReference, ChatMessage } from '../types'
 
 const MAX_HISTORY = 20
 
 const AIChat: React.FC = () => {
-  const [messages, setMessages] = useState<Message[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content:
-        '你好！我是你的算法教练 AI，有什么问题可以问我。比如：\n- 动态规划怎么入门？\n- 二分查找有什么注意事项？\n- 这道题的思路是什么？',
-    },
-  ])
+  const {
+    messages,
+    currentConversationId,
+    isLoading,
+    isInitializing,
+    error: storeError,
+    init,
+    addMessage,
+    removeMessage,
+    setLoading,
+    setError,
+  } = useChatStore()
+  const { user } = useAuthStore()
+  const userId = user?.id ?? LOCAL_USER_ID
+
   const [input, setInput] = useState('')
-  const [isLoading, setIsLoading] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [lastFailedInput, setLastFailedInput] = useState<string>('')
   const messagesEndRef = useRef<HTMLDivElement>(null)
 
@@ -35,54 +35,60 @@ const AIChat: React.FC = () => {
     scrollToBottom()
   }, [messages])
 
-  const buildHistory = (msgs: Message[]) => {
-    // Exclude the seeded welcome message (id='1') and only keep user/assistant turns.
-    const conversation = msgs.filter((m) => m.id !== '1')
-    // Keep only the most recent MAX_HISTORY entries.
-    const recent = conversation.slice(-MAX_HISTORY)
+  // 挂载时加载该用户的会话
+  useEffect(() => {
+    init(userId)
+  }, [userId, init])
+
+  const buildHistory = (msgs: ChatMessage[]) => {
+    const recent = msgs.slice(-MAX_HISTORY)
     return recent.map((m) => ({ role: m.role, content: m.content }))
   }
 
-  // `baseMessages` lets callers (retry) pass a cleaned message list so we
-  // don't read stale closure state. Defaults to the current `messages`.
-  const send = async (text: string, baseMessages?: Message[]) => {
-    if (!text.trim() || isLoading) return
+  const send = async (text: string) => {
+    if (!text.trim() || isLoading || !currentConversationId) return
 
     setError(null)
-    const userMessage: Message = {
-      id: Date.now().toString(),
-      role: 'user',
-      content: text,
-    }
-
-    const sourceMessages = baseMessages ?? messages
-    // Build history from the messages BEFORE adding the new user message,
-    // so the current question is not duplicated in history.
-    const history = buildHistory(sourceMessages)
-    setMessages([...sourceMessages, userMessage])
+    setLoading(true)
     setInput('')
-    setIsLoading(true)
 
+    let userMsgId: string | null = null
     try {
+      // 1. 先持久化用户消息
+      const userMsg = await addMessage({
+        userId,
+        conversationId: currentConversationId,
+        role: 'user',
+        content: text,
+      })
+      userMsgId = userMsg.id
+      // 2. 构建历史（不含刚插入的用户消息，避免重复）
+      const history = buildHistory(messages)
       const resp = await agentApi.chat({
         message: text,
         history,
         context: undefined,
       })
       const data = resp.data
-      const aiResponse: Message = {
-        id: (Date.now() + 1).toString(),
+      // 3. 持久化 AI 回复
+      await addMessage({
+        userId,
+        conversationId: currentConversationId,
         role: 'assistant',
         content: data.message,
-        references: data.references?.length ? data.references : undefined,
-      }
-      setMessages((prev) => [...prev, aiResponse])
+        references: data.references,
+        toolCalls: data.tool_calls,
+      })
     } catch (err) {
+      // 失败回滚：移除刚插入的用户消息（如果已插入）
+      if (userMsgId) {
+        await removeMessage(userMsgId)
+      }
       const message = err instanceof Error ? err.message : '请求失败，请重试'
       setError(message)
       setLastFailedInput(text)
     } finally {
-      setIsLoading(false)
+      setLoading(false)
     }
   }
 
@@ -90,22 +96,10 @@ const AIChat: React.FC = () => {
     send(input)
   }
 
-  const handleRetry = () => {
-    // Synchronously compute the cleaned message list (remove the failed
-    // trailing user message), then setMessages explicitly BEFORE calling
-    // send() with the same cleaned list. This guarantees the retry's history
-    // is built from `cleanedMessages`, not the stale closure `messages`.
-    let lastUserIdx = -1
-    for (let i = messages.length - 1; i >= 0; i--) {
-      if (messages[i].role === 'user') {
-        lastUserIdx = i
-        break
-      }
-    }
-    const cleanedMessages = lastUserIdx === -1 ? messages : messages.slice(0, lastUserIdx)
-    setMessages(cleanedMessages)
+  const handleRetry = async () => {
+    if (!currentConversationId) return
     setError(null)
-    send(lastFailedInput, cleanedMessages)
+    await send(lastFailedInput)
   }
 
   const handleKeyPress = (e: React.KeyboardEvent) => {
@@ -117,60 +111,83 @@ const AIChat: React.FC = () => {
 
   const quickQuestions = ['DP 怎么入门？', '二分查找模板', '什么是滑动窗口？', '递归和迭代的区别']
 
+  // 欢迎消息（仅本地展示用，不持久化）
+  const displayMessages: (ChatMessage & { isWelcome?: boolean })[] =
+    messages.length === 0
+      ? [
+          {
+            id: 'welcome',
+            conversation_id: '',
+            user_id: '',
+            role: 'assistant',
+            content:
+              '你好！我是你的算法教练 AI，有什么问题可以问我。比如：\n- 动态规划怎么入门？\n- 二分查找有什么注意事项？\n- 这道题的思路是什么？',
+            created_at: '',
+            isWelcome: true,
+          },
+        ]
+      : messages
+
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col">
       <div>
-        <h1 className="text-3xl font-bold text-gray-900">AI 问答</h1>
+        <h1 className="text-3xl font text-gray-900">AI 问答</h1>
         <p className="text-gray-600 mt-2">有任何算法问题，随时问我</p>
       </div>
 
       <div className="flex-1 mt-6 bg-white rounded-xl shadow-sm border border-gray-100 flex flex-col overflow-hidden">
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {messages.map((msg) => (
-            <div
-              key={msg.id}
-              className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
-            >
+          {isInitializing ? (
+            <div className="flex items-center justify-center text-gray-400 py-12">
+              正在加载历史会话...
+            </div>
+          ) : (
+            displayMessages.map((msg) => (
               <div
-                className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
-                  msg.role === 'user' ? 'bg-blue-600' : 'bg-purple-600'
-                }`}
+                key={msg.id}
+                className={`flex gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}
               >
-                {msg.role === 'user' ? (
-                  <User className="text-white" size={20} />
-                ) : (
-                  <Bot className="text-white" size={20} />
-                )}
-              </div>
-              <div className={`max-w-[70%] ${msg.role === 'user' ? 'items-end' : ''}`}>
                 <div
-                  className={`px-4 py-3 rounded-2xl whitespace-pre-wrap ${
-                    msg.role === 'user'
-                      ? 'bg-blue-600 text-white rounded-tr-md'
-                      : 'bg-gray-100 text-gray-900 rounded-tl-md'
+                  className={`w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 ${
+                    msg.role === 'user' ? 'bg-blue-600' : 'bg-purple-600'
                   }`}
                 >
-                  {msg.content}
+                  {msg.role === 'user' ? (
+                    <User className="text-white" size={20} />
+                  ) : (
+                    <Bot className="text-white" size={20} />
+                  )}
                 </div>
-                {msg.references && msg.references.length > 0 && (
-                  <div className="mt-2 space-y-1">
-                    <p className="text-xs text-gray-500">引用来源：</p>
-                    {msg.references.map((ref, idx) => (
-                      <div
-                        key={idx}
-                        className="flex items-center gap-2 text-sm text-blue-600 hover:underline cursor-pointer"
-                        title={ref.source}
-                      >
-                        <BookOpen size={14} />
-                        <span>{ref.title}</span>
-                        <span className="text-xs text-gray-400">({ref.source})</span>
-                      </div>
-                    ))}
+                <div className={`max-w-[70%] ${msg.role === 'user' ? 'items-end' : ''}`}>
+                  <div
+                    className={`px-4 py-3 rounded-2xl whitespace-pre-wrap ${
+                      msg.role === 'user'
+                        ? 'bg-blue-600 text-white rounded-tr-md'
+                        : 'bg-gray-100 text-gray-900 rounded-tl-md'
+                    }`}
+                  >
+                    {msg.content}
                   </div>
-                )}
+                  {msg.references && msg.references.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs text-gray-500">引用来源：</p>
+                      {msg.references.map((ref: AgentReference, idx: number) => (
+                        <div
+                          key={idx}
+                          className="flex items-center gap-2 text-sm text-blue-600 hover:underline cursor-pointer"
+                          title={ref.source}
+                        >
+                          <BookOpen size={14} />
+                          <span>{ref.title}</span>
+                          <span className="text-xs text-gray-400">({ref.source})</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          ))}
+            ))
+          )}
           {isLoading && (
             <div className="flex gap-3">
               <div className="w-10 h-10 rounded-full bg-purple-600 flex items-center justify-center">
@@ -197,11 +214,11 @@ const AIChat: React.FC = () => {
           <div ref={messagesEndRef} />
         </div>
 
-        {error && (
+        {storeError && (
           <div className="px-6 py-3 bg-red-50 border-t border-red-100 flex items-center justify-between">
             <div className="flex items-center gap-2 text-red-700 text-sm">
               <AlertCircle size={16} />
-              <span>请求失败：{error}</span>
+              <span>请求失败：{storeError}</span>
             </div>
             <button
               onClick={handleRetry}
@@ -214,7 +231,7 @@ const AIChat: React.FC = () => {
           </div>
         )}
 
-        {messages.length <= 1 && !isLoading && (
+        {messages.length === 0 && !isLoading && !isInitializing && (
           <div className="px-6 pb-4">
             <p className="text-sm text-gray-500 mb-2">常见问题：</p>
             <div className="flex flex-wrap gap-2">
@@ -243,7 +260,7 @@ const AIChat: React.FC = () => {
             />
             <button
               onClick={handleSend}
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isLoading || isInitializing}
               className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
             >
               <Send size={20} />
